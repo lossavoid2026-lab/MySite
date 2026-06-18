@@ -11,7 +11,6 @@
 <body>
   <div id="colorStage"></div>
 
-  <!-- ログイン画面 -->
   <div id="loginPanel" class="login-panel">
     <h1>San Festival</h1>
     <p>学校アカウントでログインしてください</p>
@@ -19,7 +18,6 @@
     <p id="loginMessage"></p>
   </div>
 
-  <!-- 演出画面 -->
   <div id="mainPanel" class="participant-ui hidden">
     <h1>FESTIVAL COLOR</h1>
     <p id="studentIdText">未ログイン</p>
@@ -28,30 +26,20 @@
     <button id="logoutBtn">ログアウト</button>
   </div>
 
-  <!-- カメラボタン -->
   <button id="openCamera" class="camera-fab hidden">📷</button>
 
-  <!-- 右下ミニカメラ -->
   <div id="miniCamera" class="mini-camera hidden">
     <video id="cameraPreview" autoplay playsinline muted></video>
 
     <div class="mini-controls">
-      <button id="takePhoto" title="写真">📸</button>
-      <button id="recordVideo" title="動画">🎥</button>
-      <button id="closeCamera" title="閉じる">×</button>
+      <button id="takePhoto">📸</button>
+      <button id="recordVideo">●</button>
+      <button id="stopRecord" disabled>■</button>
+      <button id="closeCamera">×</button>
     </div>
 
     <p id="cameraStatus">カメラ待機中</p>
     <canvas id="photoCanvas" style="display:none;"></canvas>
-
-    <!-- 標準カメラで動画撮影 -->
-    <input
-      id="videoFileInput"
-      type="file"
-      accept="video/*"
-      capture="environment"
-      style="display:none;"
-    />
   </div>
 
   <script type="module">
@@ -101,11 +89,14 @@
     const photoCanvas = document.getElementById('photoCanvas');
     const takePhotoBtn = document.getElementById('takePhoto');
     const recordVideoBtn = document.getElementById('recordVideo');
+    const stopRecordBtn = document.getElementById('stopRecord');
     const closeCameraBtn = document.getElementById('closeCamera');
     const cameraStatus = document.getElementById('cameraStatus');
-    const videoFileInput = document.getElementById('videoFileInput');
 
     let cameraStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let currentMimeType = '';
 
     loginBtn.addEventListener('click', async () => {
       loginMessage.textContent = 'ログイン中...';
@@ -169,37 +160,6 @@
 
     watchActiveSession(applyColor);
 
-    async function openCamera() {
-      try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        });
-
-        cameraPreview.srcObject = cameraStream;
-        miniCamera.classList.remove('hidden');
-        cameraStatus.textContent = 'カメラ起動中';
-      } catch (error) {
-        console.error(error);
-        alert('カメラを起動できませんでした。カメラ許可を確認してください。');
-      }
-    }
-
-    function closeCamera() {
-      if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
-        cameraStream = null;
-      }
-
-      cameraPreview.srcObject = null;
-      miniCamera.classList.add('hidden');
-      cameraStatus.textContent = 'カメラ停止';
-    }
-
     function getStudentId() {
       return localStorage.getItem('festival_student_id') || 'guest';
     }
@@ -229,6 +189,83 @@
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 3000);
+    }
+
+    function getCameraErrorMessage(error) {
+      if (error.name === 'NotAllowedError') {
+        return 'カメラが許可されていません。ブラウザのサイト設定からカメラ・マイクを許可してください。';
+      }
+
+      if (error.name === 'NotFoundError') {
+        return 'カメラが見つかりません。端末にカメラがあるか確認してください。';
+      }
+
+      if (error.name === 'NotReadableError') {
+        return '他のアプリがカメラを使用中です。カメラアプリ等を閉じてください。';
+      }
+
+      if (error.name === 'OverconstrainedError') {
+        return '指定したカメラ設定に対応していません。設定を下げて再試行します。';
+      }
+
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        return 'HTTPS環境で開いてください。GitHub PagesのURLで試してください。';
+      }
+
+      return `カメラ起動エラー：${error.name}`;
+    }
+
+    async function openCamera() {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: true
+        });
+
+        cameraPreview.srcObject = cameraStream;
+        miniCamera.classList.remove('hidden');
+        cameraStatus.textContent = 'カメラ起動中';
+      } catch (error) {
+        console.error(error);
+
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+          });
+
+          cameraPreview.srcObject = cameraStream;
+          miniCamera.classList.remove('hidden');
+          cameraStatus.textContent = 'カメラ起動中';
+        } catch (retryError) {
+          console.error(retryError);
+          alert(getCameraErrorMessage(retryError));
+          cameraStatus.textContent = retryError.name;
+        }
+      }
+    }
+
+    function closeCamera() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+
+      cameraPreview.srcObject = null;
+      miniCamera.classList.add('hidden');
+
+      recordVideoBtn.disabled = false;
+      stopRecordBtn.disabled = true;
+
+      cameraStatus.textContent = 'カメラ停止';
     }
 
     function takePhoto() {
@@ -263,46 +300,104 @@
       }, 'image/png');
     }
 
-    function openStandardVideoCamera() {
-      videoFileInput.value = '';
-      videoFileInput.click();
+    function getSupportedVideoType() {
+      if (!window.MediaRecorder) return '';
+
+      const types = [
+        'video/mp4',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm'
+      ];
+
+      for (const type of types) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          return type;
+        }
+      }
+
+      return '';
     }
 
-    videoFileInput.addEventListener('change', () => {
-      const file = videoFileInput.files[0];
-
-      if (!file) {
-        cameraStatus.textContent = '動画が選択されませんでした';
+    function startRecord() {
+      if (!cameraStream) {
+        alert('先にカメラを起動してください');
         return;
       }
 
-      const originalExt = file.name.includes('.')
-        ? file.name.split('.').pop().toLowerCase()
-        : 'mp4';
+      if (!window.MediaRecorder) {
+        alert('このブラウザはWeb内録画に対応していません');
+        return;
+      }
 
-      const ext = originalExt || 'mp4';
-      const fileName = createFileName(ext);
+      recordedChunks = [];
+      currentMimeType = getSupportedVideoType();
 
-      const url = URL.createObjectURL(file);
+      if (!currentMimeType) {
+        alert('この端末では対応している動画形式がありません');
+        return;
+      }
 
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      try {
+        mediaRecorder = new MediaRecorder(cameraStream, {
+          mimeType: currentMimeType
+        });
+      } catch (error) {
+        console.error(error);
+        alert(`録画開始に失敗しました：${error.name}`);
+        return;
+      }
 
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-      }, 3000);
+      mediaRecorder.ondataavailable = event => {
+        if (event.data && event.data.size > 0) {
+          recordedChunks.push(event.data);
+        }
+      };
 
-      cameraStatus.textContent = `動画保存：${fileName}`;
-    });
+      mediaRecorder.onerror = event => {
+        console.error(event);
+        alert('録画中にエラーが発生しました');
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, {
+          type: currentMimeType
+        });
+
+        if (blob.size === 0) {
+          alert('動画データが作成されませんでした');
+          cameraStatus.textContent = '動画データなし';
+          return;
+        }
+
+        const ext = currentMimeType.includes('mp4') ? 'mp4' : 'webm';
+        const fileName = createFileName(ext);
+
+        saveBlob(blob, fileName);
+        cameraStatus.textContent = `動画保存：${fileName}`;
+      };
+
+      mediaRecorder.start(1000);
+
+      recordVideoBtn.disabled = true;
+      stopRecordBtn.disabled = false;
+      cameraStatus.textContent = `録画中... ${currentMimeType}`;
+    }
+
+    function stopRecord() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+      }
+
+      recordVideoBtn.disabled = false;
+      stopRecordBtn.disabled = true;
+    }
 
     openCameraBtn.addEventListener('click', openCamera);
     closeCameraBtn.addEventListener('click', closeCamera);
     takePhotoBtn.addEventListener('click', takePhoto);
-    recordVideoBtn.addEventListener('click', openStandardVideoCamera);
+    recordVideoBtn.addEventListener('click', startRecord);
+    stopRecordBtn.addEventListener('click', stopRecord);
   </script>
 </body>
 </html>
