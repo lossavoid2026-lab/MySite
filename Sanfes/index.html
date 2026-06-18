@@ -22,7 +22,8 @@
   <div id="mainPanel" class="participant-ui hidden">
     <h1>FESTIVAL COLOR</h1>
     <p id="studentIdText">未ログイン</p>
-
+    <p id="status">受信待機中...</p>
+    <p id="colorText">#000000</p>
     <p id="uploadStatus">アップロード待機中</p>
     <button id="logoutBtn">ログアウト</button>
   </div>
@@ -58,7 +59,6 @@
     const GOOGLE_DRIVE_FOLDER_ID = "1r7rKCri1my5jNO2OMV_4G3B9gos8kSAG";
     const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
     const CHUNK_SIZE = 2 * 1024 * 1024;
-    const MAX_VIDEO_SECONDS = 15;
 
     const firebaseConfig = {
       apiKey: "AIzaSyC7oudfhfJC7zssUb0KR98tFy_lxvVT0bI",
@@ -103,7 +103,7 @@
     let currentMimeType = '';
     let tokenClient = null;
     let accessToken = '';
-    let recordTimerId = 0;
+    let schoolFolderId = '';
 
     loginBtn.addEventListener('click', async () => {
       loginMessage.textContent = 'ログイン中...';
@@ -251,11 +251,105 @@
       return getGoogleAccessToken({ prompt: '' });
     }
 
-    async function startDriveResumableSession(blob, fileInfo, mimeType, token) {
+    function escapeDriveQueryValue(value) {
+      return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function getSchoolFolderName() {
+      const studentId = getStudentId();
+      const match = studentId.match(/^[a-zA-Z]+/);
+      return match ? match[0].toUpperCase() : 'UNKNOWN';
+    }
+
+    async function ensureSchoolDriveFolder(token) {
+      const folderName = getSchoolFolderName();
+      const cacheKey = `festival_drive_school_folder_${folderName}`;
+      const cachedFolderId = schoolFolderId || localStorage.getItem(cacheKey);
+
+      if (cachedFolderId) {
+        schoolFolderId = cachedFolderId;
+        return cachedFolderId;
+      }
+
+      cameraStatus.textContent = `学校フォルダ確認中...${folderName}`;
+
+      const escapedName = escapeDriveQueryValue(folderName);
+      const escapedParent = escapeDriveQueryValue(GOOGLE_DRIVE_FOLDER_ID);
+      const query = [
+        "mimeType='application/vnd.google-apps.folder'",
+        `name='${escapedName}'`,
+        `'${escapedParent}' in parents`,
+        'trashed=false'
+      ].join(' and ');
+
+      const searchUrl = [
+        'https://www.googleapis.com/drive/v3/files',
+        '?supportsAllDrives=true',
+        '&includeItemsFromAllDrives=true',
+        '&spaces=drive',
+        '&fields=files(id,name)',
+        `&q=${encodeURIComponent(query)}`
+      ].join('');
+
+      const searchRes = await fetch(searchUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (searchRes.status === 401) {
+        const newToken = await refreshGoogleAccessToken();
+        return ensureSchoolDriveFolder(newToken);
+      }
+
+      if (!searchRes.ok) {
+        throw new Error(await searchRes.text());
+      }
+
+      const searchResult = await searchRes.json();
+      const existingFolder = searchResult.files?.[0];
+
+      if (existingFolder?.id) {
+        schoolFolderId = existingFolder.id;
+        localStorage.setItem(cacheKey, existingFolder.id);
+        return existingFolder.id;
+      }
+
+      cameraStatus.textContent = `学校フォルダ作成中...${folderName}`;
+
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json; charset=UTF-8'
+        },
+        body: JSON.stringify({
+          name: folderName,
+          mimeType: 'application/vnd.google-apps.folder',
+          parents: [GOOGLE_DRIVE_FOLDER_ID]
+        })
+      });
+
+      if (createRes.status === 401) {
+        const newToken = await refreshGoogleAccessToken();
+        return ensureSchoolDriveFolder(newToken);
+      }
+
+      if (!createRes.ok) {
+        throw new Error(await createRes.text());
+      }
+
+      const createdFolder = await createRes.json();
+      schoolFolderId = createdFolder.id;
+      localStorage.setItem(cacheKey, createdFolder.id);
+      return createdFolder.id;
+    }
+
+    async function startDriveResumableSession(blob, fileInfo, mimeType, token, parentFolderId) {
       const metadata = {
         name: fileInfo.fileName,
         mimeType,
-        parents: [GOOGLE_DRIVE_FOLDER_ID],
+        parents: [parentFolderId],
         description: JSON.stringify({
           studentId: fileInfo.studentId,
           fileNo: fileInfo.fileNo,
@@ -284,7 +378,7 @@
 
       if (res.status === 401) {
         const newToken = await refreshGoogleAccessToken();
-        return startDriveResumableSession(blob, fileInfo, mimeType, newToken);
+        return startDriveResumableSession(blob, fileInfo, mimeType, newToken, parentFolderId);
       }
 
       if (!res.ok) {
@@ -370,7 +464,8 @@
       cameraStatus.textContent = 'Google Driveへ接続中...';
 
       const token = await getGoogleAccessToken();
-      const uploadUrl = await startDriveResumableSession(blob, fileInfo, mimeType, token);
+      const parentFolderId = await ensureSchoolDriveFolder(token);
+      const uploadUrl = await startDriveResumableSession(blob, fileInfo, mimeType, token, parentFolderId);
       let start = 0;
 
       while (start < blob.size) {
@@ -404,7 +499,8 @@
     async function openCamera() {
       try {
         cameraStatus.textContent = 'Google Driveへ接続中...';
-        await getGoogleAccessToken({ prompt: accessToken ? '' : 'consent' });
+        const token = await getGoogleAccessToken({ prompt: accessToken ? '' : 'consent' });
+        await ensureSchoolDriveFolder(token);
 
         cameraStream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -431,8 +527,6 @@
       if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
       }
-
-      clearTimeout(recordTimerId);
 
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
@@ -538,8 +632,6 @@
       };
 
       mediaRecorder.onstop = async () => {
-        clearTimeout(recordTimerId);
-
         const blob = new Blob(recordedChunks, {
           type: currentMimeType
         });
@@ -568,13 +660,7 @@
       recordToggleBtn.innerHTML = '&#9632;';
       recordToggleBtn.classList.add('is-recording');
       recordToggleBtn.setAttribute('title', '録画を停止');
-      cameraStatus.textContent = `録画中...最大${MAX_VIDEO_SECONDS}秒`;
-
-      recordTimerId = setTimeout(() => {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-          stopRecord();
-        }
-      }, MAX_VIDEO_SECONDS * 1000);
+      cameraStatus.textContent = '録画中...';
     }
 
     function stopRecord() {
@@ -582,7 +668,6 @@
         mediaRecorder.stop();
       }
 
-      clearTimeout(recordTimerId);
       recordToggleBtn.disabled = false;
       recordToggleBtn.innerHTML = '&#9679;';
       recordToggleBtn.classList.remove('is-recording');
