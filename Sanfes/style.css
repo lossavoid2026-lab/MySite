@@ -9,6 +9,10 @@ body {
   color: white;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .wrap {
   width: min(1000px, 92vw);
   margin: 0 auto;
@@ -93,6 +97,11 @@ button:hover,
   background: rgba(0, 255, 255, 0.22);
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 button.primary {
   border-color: #ff00ff;
   background: rgba(255, 0, 255, 0.22);
@@ -164,7 +173,7 @@ video {
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-/* index.html 専用 */
+/* index.html専用 */
 #colorStage {
   position: fixed;
   inset: 0;
@@ -185,6 +194,7 @@ video {
   text-shadow: 0 0 14px black;
   pointer-events: none;
   text-align: center;
+  padding: 20px;
 }
 
 .participant-ui h1 {
@@ -194,4 +204,124 @@ video {
 #colorText {
   font-size: 28px;
   font-weight: bold;
+}
+
+#logoutBtn {
+  pointer-events: auto;
+  margin-top: 14px;
+}
+
+/* ログイン */
+.login-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background:
+    linear-gradient(135deg, rgba(255, 0, 255, 0.22), transparent),
+    linear-gradient(45deg, rgba(0, 255, 255, 0.18), transparent),
+    #05050a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  color: white;
+  padding: 24px;
+}
+
+.login-panel h1 {
+  font-size: clamp(40px, 10vw, 92px);
+}
+
+/* カメラ */
+.camera-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 50;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  font-size: 26px;
+  padding: 0;
+}
+
+.mini-camera {
+  position: fixed;
+  right: 12px;
+  bottom: 88px;
+  z-index: 60;
+  width: 190px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 2px solid #00ffff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 0 18px rgba(0, 255, 255, 0.35),
+    0 0 28px rgba(255, 0, 255, 0.18);
+}
+
+#cameraPreview {
+  width: 100%;
+  height: 128px;
+  object-fit: cover;
+  display: block;
+  background: #000;
+  border-radius: 0;
+  margin: 0;
+}
+
+.mini-controls {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 6px;
+}
+
+.mini-controls button {
+  padding: 8px 0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+#cameraStatus {
+  margin: 0;
+  padding: 0 6px 8px;
+  font-size: 11px;
+  text-align: center;
+  color: #00ffff;
+}
+
+/* スマホ調整 */
+@media (max-width: 480px) {
+  .participant-ui h1 {
+    font-size: 34px;
+  }
+
+  .participant-ui p {
+    margin: 5px 0;
+  }
+
+  .camera-fab {
+    right: 14px;
+    bottom: 14px;
+    width: 58px;
+    height: 58px;
+  }
+
+  .mini-camera {
+    right: 10px;
+    bottom: 80px;
+    width: 165px;
+  }
+
+  #cameraPreview {
+    height: 112px;
+  }
+
+  .mini-controls button {
+    font-size: 12px;
+    padding: 7px 0;
+  }
 }

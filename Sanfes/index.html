@@ -5,16 +5,153 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Festival Color</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="data:," />
 </head>
+
 <body>
   <div id="colorStage"></div>
+
+  <!-- ログイン画面 -->
+  <div id="loginPanel" class="login-panel">
+    <h1>San Festival</h1>
+    <p>学校アカウントでログインしてください</p>
+    <button id="loginBtn">Googleでログイン</button>
+    <p id="loginMessage"></p>
+  </div>
+
+  <!-- 演出画面 -->
+  <div id="mainPanel" class="participant-ui hidden">
+    <h1>FESTIVAL COLOR</h1>
+    <p id="studentIdText">未ログイン</p>
+    <p id="status">受信待機中...</p>
+    <p id="colorText">#000000</p>
+    <button id="logoutBtn">ログアウト</button>
+  </div>
+
+  <!-- カメラボタン -->
+  <button id="openCamera" class="camera-fab hidden">📷</button>
+
+  <!-- 右下ミニカメラ -->
+  <div id="miniCamera" class="mini-camera hidden">
+    <video id="cameraPreview" autoplay playsinline muted></video>
+
+    <div class="mini-controls">
+      <button id="takePhoto" title="写真">📸</button>
+      <button id="recordVideo" title="動画">🎥</button>
+      <button id="closeCamera" title="閉じる">×</button>
+    </div>
+
+    <p id="cameraStatus">カメラ待機中</p>
+    <canvas id="photoCanvas" style="display:none;"></canvas>
+
+    <!-- 標準カメラで動画撮影 -->
+    <input
+      id="videoFileInput"
+      type="file"
+      accept="video/*"
+      capture="environment"
+      style="display:none;"
+    />
+  </div>
 
   <script type="module">
     import { watchActiveSession } from './realtime.js';
 
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC7oudfhfJC7zssUb0KR98tFy_lxvVT0bI",
+      authDomain: "sanfestival-7a016.firebaseapp.com",
+      databaseURL: "https://sanfestival-7a016-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "sanfestival-7a016",
+      storageBucket: "sanfestival-7a016.firebasestorage.app",
+      messagingSenderId: "819550776861",
+      appId: "1:819550776861:web:f38613132aef5bc3c7e0f4",
+      measurementId: "G-516PDY0SYD"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    provider.setCustomParameters({
+      hd: "sankogakuen.jp"
+    });
+
     const stage = document.getElementById('colorStage');
+    const loginPanel = document.getElementById('loginPanel');
+    const mainPanel = document.getElementById('mainPanel');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginMessage = document.getElementById('loginMessage');
+    const studentIdText = document.getElementById('studentIdText');
     const status = document.getElementById('status');
     const colorText = document.getElementById('colorText');
+
+    const openCameraBtn = document.getElementById('openCamera');
+    const miniCamera = document.getElementById('miniCamera');
+    const cameraPreview = document.getElementById('cameraPreview');
+    const photoCanvas = document.getElementById('photoCanvas');
+    const takePhotoBtn = document.getElementById('takePhoto');
+    const recordVideoBtn = document.getElementById('recordVideo');
+    const closeCameraBtn = document.getElementById('closeCamera');
+    const cameraStatus = document.getElementById('cameraStatus');
+    const videoFileInput = document.getElementById('videoFileInput');
+
+    let cameraStream = null;
+
+    loginBtn.addEventListener('click', async () => {
+      loginMessage.textContent = 'ログイン中...';
+
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (error) {
+        console.error(error);
+        loginMessage.textContent = 'ログインに失敗しました';
+      }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    onAuthStateChanged(auth, async user => {
+      if (!user) {
+        localStorage.removeItem('festival_student_id');
+
+        loginPanel.classList.remove('hidden');
+        mainPanel.classList.add('hidden');
+        openCameraBtn.classList.add('hidden');
+        loginMessage.textContent = '';
+
+        closeCamera();
+        return;
+      }
+
+      const email = user.email || '';
+
+      if (!email.endsWith('@sankogakuen.jp')) {
+        alert('学校アカウント（@sankogakuen.jp）でログインしてください');
+        await signOut(auth);
+        return;
+      }
+
+      const studentId = email.split('@')[0];
+
+      localStorage.setItem('festival_student_id', studentId);
+
+      studentIdText.textContent = `ID：${studentId}`;
+      loginPanel.classList.add('hidden');
+      mainPanel.classList.remove('hidden');
+      openCameraBtn.classList.remove('hidden');
+    });
 
     function applyColor(session) {
       if (!session || !session.color) return;
@@ -23,14 +160,149 @@
 
       stage.style.background = color;
       document.body.style.background = color;
-
       colorText.textContent = color;
+
       status.textContent = session.isPlaying
         ? `受信中：${session.sequenceName || 'manual'}`
         : '停止中';
     }
 
     watchActiveSession(applyColor);
+
+    async function openCamera() {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+
+        cameraPreview.srcObject = cameraStream;
+        miniCamera.classList.remove('hidden');
+        cameraStatus.textContent = 'カメラ起動中';
+      } catch (error) {
+        console.error(error);
+        alert('カメラを起動できませんでした。カメラ許可を確認してください。');
+      }
+    }
+
+    function closeCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+
+      cameraPreview.srcObject = null;
+      miniCamera.classList.add('hidden');
+      cameraStatus.textContent = 'カメラ停止';
+    }
+
+    function getStudentId() {
+      return localStorage.getItem('festival_student_id') || 'guest';
+    }
+
+    function getNextFileNumber() {
+      const key = `festival_file_count_${getStudentId()}`;
+      let count = Number(localStorage.getItem(key) || '0');
+      count++;
+      localStorage.setItem(key, String(count));
+      return String(count).padStart(3, '0');
+    }
+
+    function createFileName(ext) {
+      return `${getStudentId()}_${getNextFileNumber()}.${ext}`;
+    }
+
+    function saveBlob(blob, fileName) {
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 3000);
+    }
+
+    function takePhoto() {
+      if (!cameraStream) {
+        alert('先にカメラを起動してください');
+        return;
+      }
+
+      const w = cameraPreview.videoWidth;
+      const h = cameraPreview.videoHeight;
+
+      if (!w || !h) {
+        alert('カメラ映像の取得中です。少し待ってから撮影してください。');
+        return;
+      }
+
+      photoCanvas.width = w;
+      photoCanvas.height = h;
+
+      const ctx = photoCanvas.getContext('2d');
+      ctx.drawImage(cameraPreview, 0, 0, w, h);
+
+      photoCanvas.toBlob(blob => {
+        if (!blob) {
+          alert('写真の保存に失敗しました');
+          return;
+        }
+
+        const fileName = createFileName('png');
+        saveBlob(blob, fileName);
+        cameraStatus.textContent = `写真保存：${fileName}`;
+      }, 'image/png');
+    }
+
+    function openStandardVideoCamera() {
+      videoFileInput.value = '';
+      videoFileInput.click();
+    }
+
+    videoFileInput.addEventListener('change', () => {
+      const file = videoFileInput.files[0];
+
+      if (!file) {
+        cameraStatus.textContent = '動画が選択されませんでした';
+        return;
+      }
+
+      const originalExt = file.name.includes('.')
+        ? file.name.split('.').pop().toLowerCase()
+        : 'mp4';
+
+      const ext = originalExt || 'mp4';
+      const fileName = createFileName(ext);
+
+      const url = URL.createObjectURL(file);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 3000);
+
+      cameraStatus.textContent = `動画保存：${fileName}`;
+    });
+
+    openCameraBtn.addEventListener('click', openCamera);
+    closeCameraBtn.addEventListener('click', closeCamera);
+    takePhotoBtn.addEventListener('click', takePhoto);
+    recordVideoBtn.addEventListener('click', openStandardVideoCamera);
   </script>
 </body>
 </html>
