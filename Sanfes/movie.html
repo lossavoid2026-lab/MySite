@@ -12,14 +12,14 @@
   <main class="wrap movie-studio">
     <header class="app-topbar">
       <div>
-        <p class="page-kicker">COLOR STUDIO</p>
+        <p class="page-kicker">カラースタジオ</p>
         <h1>MOVIE COLOR</h1>
-        <p class="muted">Extract average colors from a movie and save a sequence.</p>
+        <p class="muted">動画から平均的な色を抽出し、シーケンスとして保存します。</p>
       </div>
       <nav class="app-nav">
-        <a class="btn" href="admin.html">Admin</a>
-        <a class="btn" href="gallery.html">Gallery</a>
-        <a class="btn" href="index.html">Participant</a>
+        <a class="btn" href="admin.html">管理者画面</a>
+        <a class="btn" href="gallery.html">ギャラリー</a>
+        <a class="btn" href="index.html">参加者画面</a>
       </nav>
     </header>
 
@@ -27,28 +27,28 @@
       <article class="panel setup-panel">
         <div class="panel-heading">
           <div>
-            <h2>Source</h2>
-            <p class="muted">Load a movie file, choose interval, then extract colors.</p>
+            <h2>動画の色を抽出</h2>
+            <p class="muted">動画ファイルを読み込み、間隔を選択し、色を抽出します。</p>
           </div>
         </div>
 
         <label class="drop-zone" for="file">
           <span class="drop-icon">+</span>
           <span>
-            <strong>Select movie</strong>
-            <small>mp4, mov, or browser-supported video</small>
+            <strong>動画を選択</strong>
+            <small>mp4, mov, またはブラウザでサポートされている動画形式</small>
           </span>
           <input id="file" type="file" accept="video/mp4,video/quicktime,video/*" />
         </label>
 
         <div class="field-grid">
           <label>
-            <span>Sequence name</span>
+            <span>シーケンス名</span>
             <input id="name" type="text" value="festival-sequence" />
           </label>
 
           <label>
-            <span>Interval seconds</span>
+            <span>間隔 (秒)</span>
             <input id="interval" type="number" value="0.5" min="0.1" step="0.1" />
           </label>
         </div>
@@ -65,8 +65,8 @@
       <article class="panel preview-panel">
         <div class="panel-heading">
           <div>
-            <h2>Preview</h2>
-            <p class="muted">Generated swatches appear below the video.</p>
+            <h2>プレビュー</h2>
+            <p class="muted">生成されたスウォッチは動画の下に表示されます。</p>
           </div>
         </div>
 

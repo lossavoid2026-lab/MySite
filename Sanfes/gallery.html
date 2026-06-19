@@ -24,16 +24,16 @@
       <aside class="explorer-sidebar" aria-label="Gallery filters">
         <p class="sidebar-label">Drive views</p>
         <button id="filterMine" class="explorer-nav-item primary" type="button">
-          <span class="nav-icon">ME</span>
+          <span class="nav-icon image-icon"><img src="assets/gallery/me.png" alt=""></span>
           <span>自分の写真</span>
         </button>
         <button id="filterSchool" class="explorer-nav-item" type="button">
-          <span class="nav-icon">XX</span>
+          <span class="nav-icon image-icon"><img src="assets/gallery/school.png" alt=""></span>
           <span>学校内</span>
         </button>
         <button id="filterCampus" class="explorer-nav-item" type="button">
-          <span class="nav-icon">VG</span>
-          <span>vga全体</span>
+          <span class="nav-icon image-icon"><img src="assets/gallery/campus.png" alt=""></span>
+          <span>学園内(vga全体)</span>
         </button>
       </aside>
 
@@ -156,7 +156,9 @@
       card.dataset.id = id;
 
       let preview = "";
-      if (isPhoto && previewUrl) {
+      if (isPhoto && item.driveFileId) {
+        preview = `<img class="gallery-preview drive-private-image" data-drive-file-id="${escapeHtml(item.driveFileId)}" alt="${escapeHtml(item.fileName || "photo")}" loading="lazy">`;
+      } else if (isPhoto && previewUrl) {
         preview = `<img class="gallery-preview" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(item.fileName || "photo")}" loading="lazy">`;
       } else if (isVideo) {
         preview = `<div class="gallery-video-placeholder">VIDEO</div>`;
@@ -212,6 +214,7 @@
       items.forEach(item => gallery.appendChild(createCard(item)));
       status.textContent = `${items.length}件表示中 / ${activeFilter}`;
       updateDownloadButton();
+      hydratePrivateThumbnails();
     }
 
     function updateDownloadButton() {
@@ -258,6 +261,54 @@
         });
         tokenClient.requestAccessToken({ prompt: "" });
       });
+    }
+
+    async function loadAuthenticatedDriveImage(img) {
+      if (img.dataset.loading === "true" || img.dataset.loaded === "true") return;
+
+      img.dataset.loading = "true";
+
+      try {
+        const token = await getDriveAccessToken();
+        const fileId = img.dataset.driveFileId;
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+
+        const objectUrl = URL.createObjectURL(await res.blob());
+        img.src = objectUrl;
+        img.dataset.loaded = "true";
+      } catch (error) {
+        console.warn("thumbnail load failed", error);
+        img.classList.add("is-unavailable");
+        img.alt = "画像を表示できません";
+      } finally {
+        img.dataset.loading = "false";
+      }
+    }
+
+    function hydratePrivateThumbnails() {
+      const images = Array.from(gallery.querySelectorAll("img.drive-private-image[data-drive-file-id]:not([data-loaded='true'])"));
+      if (!images.length) return;
+
+      if (!("IntersectionObserver" in window)) {
+        images.forEach(img => loadAuthenticatedDriveImage(img));
+        return;
+      }
+
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          observer.unobserve(entry.target);
+          loadAuthenticatedDriveImage(entry.target);
+        });
+      }, { rootMargin: "240px" });
+
+      images.forEach(img => observer.observe(img));
     }
 
     async function toggleLike(item) {
