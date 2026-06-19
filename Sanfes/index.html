@@ -21,7 +21,7 @@
 
   <div id="mainPanel" class="participant-ui hidden">
     <h1>FESTIVAL COLOR</h1>
-    <p class="version-badge">v0.6.0-light-explorer</p>
+    <p class="version-badge">v0.7.0-polished-ui</p>
     <p id="studentIdText">未ログイン</p>
     <p id="status">受信待機中...</p>
     <p id="colorText">#000000</p>
@@ -40,6 +40,7 @@
     <div class="mini-controls">
       <button id="takePhoto" type="button" title="写真を撮影">&#128248;</button>
       <button id="recordToggle" class="record-toggle" type="button" title="動画を撮影">&#9679;</button>
+      <button id="switchCamera" type="button" title="前面/背面を切り替え">↻</button>
       <button id="openGallery" type="button" title="ギャラリーを開く">&#128444;</button>
     </div>
 
@@ -101,6 +102,7 @@
     const photoCanvas = document.getElementById('photoCanvas');
     const takePhotoBtn = document.getElementById('takePhoto');
     const recordToggleBtn = document.getElementById('recordToggle');
+    const switchCameraBtn = document.getElementById('switchCamera');
     const openGalleryBtn = document.getElementById('openGallery');
     const cameraStatus = document.getElementById('cameraStatus');
 
@@ -111,6 +113,7 @@
     let tokenClient = null;
     let accessToken = '';
     let schoolFolderId = '';
+    let currentFacingMode = 'environment';
 
     loginBtn.addEventListener('click', async () => {
       loginMessage.textContent = 'ログイン中...';
@@ -587,7 +590,7 @@
 
         cameraStream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: { ideal: 'environment' },
+            facingMode: { ideal: currentFacingMode },
             width: { ideal: 3840 },
             height: { ideal: 2160 },
             frameRate: { ideal: 15, max: 24 }
@@ -757,6 +760,43 @@
       recordToggleBtn.setAttribute('title', '動画を撮影');
     }
 
+    async function switchCameraFacing() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        alert('録画中はカメラを切り替えできません');
+        return;
+      }
+
+      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+
+      if (!cameraStream) {
+        cameraStatus.textContent = currentFacingMode === 'environment' ? '背面カメラ' : '前面カメラ';
+        return;
+      }
+
+      cameraStream.getTracks().forEach(track => track.stop());
+      cameraStream = null;
+      cameraPreview.srcObject = null;
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: currentFacingMode },
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
+            frameRate: { ideal: 15, max: 24 }
+          },
+          audio: true
+        });
+
+        cameraPreview.srcObject = cameraStream;
+        cameraStatus.textContent = currentFacingMode === 'environment' ? '背面カメラ' : '前面カメラ';
+      } catch (error) {
+        console.error(error);
+        currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+        alert(`カメラ切り替え失敗: ${error.name}`);
+      }
+    }
+
     async function toggleCamera() {
       if (cameraStream || !miniCamera.classList.contains('hidden')) {
         closeCamera();
@@ -778,6 +818,7 @@
     openCameraBtn.addEventListener('click', toggleCamera);
     takePhotoBtn.addEventListener('click', takePhoto);
     recordToggleBtn.addEventListener('click', toggleRecord);
+    switchCameraBtn.addEventListener('click', switchCameraFacing);
     openGalleryBtn.addEventListener('click', () => {
       window.location.href = 'gallery.html';
     });

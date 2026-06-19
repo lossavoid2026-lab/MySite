@@ -2,188 +2,218 @@
 <html lang="ja">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Festival Admin</title>
-    <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Festival Admin</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-    <main class="wrap">
-        <section class="hero">
-            <h1>ADMIN CONTROL</h1>
-            <p class="muted">movie.htmlで作成したカラーシーケンスを選択して、index.htmlへ一斉配信します。</p>
+  <main class="wrap app-console">
+    <header class="app-topbar">
+      <div>
+        <p class="page-kicker">LIVE CONTROL</p>
+        <h1>ADMIN</h1>
+        <p class="muted">Saved color sequences and live color override.</p>
+      </div>
+      <nav class="app-nav">
+        <a class="btn" href="movie.html">Movie Studio</a>
+        <a class="btn" href="gallery.html">Gallery</a>
+        <a class="btn" href="index.html">Participant</a>
+      </nav>
+    </header>
 
-            <div class="grid">
-                <a class="btn" href="movie.html">カラー設定</a>
-                <a class="btn" href="index.html">参加者画面</a>
-            </div>
-        </section>
+    <section class="admin-status-strip">
+      <div>
+        <span class="metric-label">Mode</span>
+        <strong id="mode">Loading...</strong>
+      </div>
+      <div>
+        <span class="metric-label">Selected</span>
+        <strong id="selected">None</strong>
+      </div>
+      <div>
+        <span class="metric-label">Output</span>
+        <strong id="liveState">Idle</strong>
+      </div>
+    </section>
 
-        <section class="card">
-            <h2>保存済みシーケンス</h2>
-            <p id="mode" class="status">読み込み中</p>
-            <div id="list" class="list"></div>
-
-            <div class="row" style="margin-top:18px;">
-                <button id="reload">再読み込み</button>
-                <button id="start" class="primary">START</button>
-                <button id="stop" class="danger">STOP</button>
-            </div>
-
-            <p id="selected" class="status">未選択</p>
-        </section>
-
-        <section class="card">
-            <h2>手動カラー</h2>
-            <div class="row">
-                <input id="manualColor" type="color" value="#ff00ff" />
-                <button id="sendManual">この色を送信</button>
-                <button id="blackout" class="danger">暗転</button>
-            </div>
-        </section>
-    </main>
-
-    <script type="module">
-        import { getSequences, setActiveSession, modeLabel } from './realtime.js';
-
-        const list = document.getElementById('list');
-        const selectedText = document.getElementById('selected');
-        const mode = document.getElementById('mode');
-
-        let sequences = [];
-        let selected = null;
-        let timer = null;
-        let index = 0;
-
-        mode.textContent = await modeLabel();
-
-        async function load() {
-            sequences = await getSequences();
-
-            list.innerHTML = sequences.length
-                ? ''
-                : '<p class="muted">まだシーケンスがありません。movie.htmlで動画から色を抽出して保存してください。</p>';
-
-            sequences.forEach(seq => {
-                const div = document.createElement('div');
-                div.className = 'sequence-item';
-
-                div.innerHTML = `
+    <section class="admin-grid">
+      <article class="panel sequence-panel">
+        <div class="panel-heading">
           <div>
-            <b>${seq.name}</b><br>
-            <span class="muted">${seq.frames?.length || 0} frames / interval ${seq.interval || '-'}s</span>
+            <h2>Sequences</h2>
+            <p class="muted">Choose a saved movie color sequence.</p>
           </div>
-          <button>選択</button>
+          <button id="reload" type="button">Reload</button>
+        </div>
+
+        <div id="list" class="list sequence-list-modern"></div>
+      </article>
+
+      <aside class="panel control-panel">
+        <h2>Playback</h2>
+        <div class="control-stack">
+          <button id="start" class="primary control-button" type="button">START</button>
+          <button id="stop" class="danger control-button" type="button">STOP</button>
+        </div>
+
+        <div class="manual-card">
+          <h2>Manual Color</h2>
+          <div class="manual-color-row">
+            <input id="manualColor" type="color" value="#ff00ff" />
+            <button id="sendManual" type="button">Send</button>
+          </div>
+          <button id="blackout" class="danger full-width" type="button">Blackout</button>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module">
+    import { getSequences, setActiveSession, modeLabel } from './realtime.js';
+
+    const list = document.getElementById('list');
+    const selectedText = document.getElementById('selected');
+    const mode = document.getElementById('mode');
+    const liveState = document.getElementById('liveState');
+
+    let sequences = [];
+    let selected = null;
+    let timer = null;
+    let index = 0;
+
+    mode.textContent = await modeLabel();
+
+    async function load() {
+      sequences = await getSequences();
+
+      list.innerHTML = sequences.length
+        ? ''
+        : '<p class="muted empty-state">No sequences yet. Create one in Movie Studio.</p>';
+
+      sequences.forEach(seq => {
+        const div = document.createElement('div');
+        div.className = 'sequence-item sequence-row';
+
+        div.innerHTML = `
+          <div class="sequence-meta">
+            <b>${seq.name}</b>
+            <span>${seq.frames?.length || 0} frames / interval ${seq.interval || '-'}s</span>
+          </div>
+          <button type="button">Select</button>
         `;
 
-                div.querySelector('button').addEventListener('click', () => {
-                    selected = seq;
-                    selectedText.textContent = `選択中：${seq.name}`;
-                });
+        div.querySelector('button').addEventListener('click', () => {
+          selected = seq;
+          selectedText.textContent = seq.name;
+          liveState.textContent = 'Ready';
+          document.querySelectorAll('.sequence-row').forEach(row => row.classList.remove('is-selected'));
+          div.classList.add('is-selected');
+        });
 
-                list.appendChild(div);
-            });
+        list.appendChild(div);
+      });
+    }
+
+    async function stop() {
+      clearInterval(timer);
+      timer = null;
+
+      await setActiveSession({
+        isPlaying: false,
+        color: '#000000',
+        sequenceId: selected?.id || null,
+        sequenceName: selected?.name || 'stop'
+      });
+
+      liveState.textContent = 'Stopped';
+      selectedText.textContent = selected ? selected.name : 'None';
+    }
+
+    document.getElementById('reload').addEventListener('click', load);
+
+    document.getElementById('start').addEventListener('click', async () => {
+      if (!selected || !selected.frames?.length) {
+        alert('シーケンスを選択してください');
+        return;
+      }
+
+      clearInterval(timer);
+      index = 0;
+
+      const startTime = performance.now();
+      const videoDuration = selected.duration || selected.frames.at(-1).time || 0;
+      const totalFrames = selected.frames.length;
+
+      const tick = async () => {
+        const elapsedSec = (performance.now() - startTime) / 1000;
+
+        if (elapsedSec >= videoDuration) {
+          await stop();
+          return;
         }
 
-        async function stop() {
-            clearInterval(timer);
-            timer = null;
+        let currentIndex = 0;
 
-            await setActiveSession({
-                isPlaying: false,
-                color: '#000000',
-                sequenceId: selected?.id || null,
-                sequenceName: selected?.name || 'stop'
-            });
-
-            selectedText.textContent = selected ? `停止中：${selected.name}` : '停止中';
+        for (let i = 0; i < totalFrames; i++) {
+          if (selected.frames[i].time <= elapsedSec) {
+            currentIndex = i;
+          } else {
+            break;
+          }
         }
 
-        document.getElementById('reload').addEventListener('click', load);
+        const frame = selected.frames[currentIndex];
 
-        document.getElementById('start').addEventListener('click', async () => {
-            if (!selected || !selected.frames?.length) {
-                alert('シーケンスを選択してください');
-                return;
-            }
-
-            clearInterval(timer);
-            index = 0;
-
-            const startTime = performance.now();
-            const videoDuration = selected.duration || selected.frames.at(-1).time || 0;
-            const totalFrames = selected.frames.length;
-
-            const tick = async () => {
-                const elapsedSec = (performance.now() - startTime) / 1000;
-
-                if (elapsedSec >= videoDuration) {
-                    await stop();
-                    return;
-                }
-
-                let currentIndex = 0;
-
-                for (let i = 0; i < totalFrames; i++) {
-                    if (selected.frames[i].time <= elapsedSec) {
-                        currentIndex = i;
-                    } else {
-                        break;
-                    }
-                }
-
-                const frame = selected.frames[currentIndex];
-
-                await setActiveSession({
-                    isPlaying: true,
-                    color: frame.color,
-                    sequenceId: selected.id,
-                    sequenceName: selected.name,
-                    frameIndex: currentIndex,
-                    totalFrames,
-                    elapsedSec,
-                    duration: videoDuration
-                });
-
-                selectedText.textContent =
-                    `再生中：${selected.name} / ${elapsedSec.toFixed(1)}s / ${videoDuration.toFixed(1)}s / ${frame.color}`;
-            };
-
-            await tick();
-            timer = setInterval(tick, 50);
+        await setActiveSession({
+          isPlaying: true,
+          color: frame.color,
+          sequenceId: selected.id,
+          sequenceName: selected.name,
+          frameIndex: currentIndex,
+          totalFrames,
+          elapsedSec,
+          duration: videoDuration
         });
 
-        document.getElementById('stop').addEventListener('click', stop);
+        liveState.textContent = `${elapsedSec.toFixed(1)}s / ${videoDuration.toFixed(1)}s / ${frame.color}`;
+      };
 
-        document.getElementById('sendManual').addEventListener('click', async () => {
-            clearInterval(timer);
+      await tick();
+      timer = setInterval(tick, 50);
+    });
 
-            const color = document.getElementById('manualColor').value;
+    document.getElementById('stop').addEventListener('click', stop);
 
-            await setActiveSession({
-                isPlaying: true,
-                color,
-                sequenceName: 'manual'
-            });
+    document.getElementById('sendManual').addEventListener('click', async () => {
+      clearInterval(timer);
 
-            selectedText.textContent = `手動送信：${color}`;
-        });
+      const color = document.getElementById('manualColor').value;
 
-        document.getElementById('blackout').addEventListener('click', async () => {
-            clearInterval(timer);
+      await setActiveSession({
+        isPlaying: true,
+        color,
+        sequenceName: 'manual'
+      });
 
-            await setActiveSession({
-                isPlaying: true,
-                color: '#000000',
-                sequenceName: 'blackout'
-            });
+      liveState.textContent = `Manual ${color}`;
+    });
 
-            selectedText.textContent = '暗転送信：#000000';
-        });
+    document.getElementById('blackout').addEventListener('click', async () => {
+      clearInterval(timer);
 
-        load();
-    </script>
+      await setActiveSession({
+        isPlaying: true,
+        color: '#000000',
+        sequenceName: 'blackout'
+      });
+
+      liveState.textContent = 'Blackout #000000';
+    });
+
+    load();
+  </script>
 </body>
 
 </html>

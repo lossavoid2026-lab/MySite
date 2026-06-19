@@ -9,51 +9,71 @@
 </head>
 
 <body>
-  <main class="wrap">
-    <section class="hero">
-      <h1>MOVIE COLOR</h1>
-      <p class="muted">動画から色を抽出して、保存します。</p>
-
-      <div class="grid">
-        <a class="btn" href="admin.html">管理画面</a>
-        <a class="btn" href="index.html">参加者画面</a>
+  <main class="wrap movie-studio">
+    <header class="app-topbar">
+      <div>
+        <p class="page-kicker">COLOR STUDIO</p>
+        <h1>MOVIE COLOR</h1>
+        <p class="muted">Extract average colors from a movie and save a sequence.</p>
       </div>
-    </section>
+      <nav class="app-nav">
+        <a class="btn" href="admin.html">Admin</a>
+        <a class="btn" href="gallery.html">Gallery</a>
+        <a class="btn" href="index.html">Participant</a>
+      </nav>
+    </header>
 
-    <section class="card">
-      <h2>動画読み込み</h2>
+    <section class="studio-grid">
+      <article class="panel setup-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Source</h2>
+            <p class="muted">Load a movie file, choose interval, then extract colors.</p>
+          </div>
+        </div>
 
-      <div class="row">
-        <input id="file" type="file" accept="video/mp4,video/quicktime,video/*" />
-      </div>
-
-      <div class="row">
-        <label>
-          保存名
-          <input id="name" type="text" value="festival-sequence" />
+        <label class="drop-zone" for="file">
+          <span class="drop-icon">+</span>
+          <span>
+            <strong>Select movie</strong>
+            <small>mp4, mov, or browser-supported video</small>
+          </span>
+          <input id="file" type="file" accept="video/mp4,video/quicktime,video/*" />
         </label>
 
-        <label>
-          抽出間隔 秒
-          <input id="interval" type="number" value="0.5" min="0.1" step="0.1" />
-        </label>
-      </div>
+        <div class="field-grid">
+          <label>
+            <span>Sequence name</span>
+            <input id="name" type="text" value="festival-sequence" />
+          </label>
 
-      <div class="row">
-        <button id="extract" class="primary">色を抽出</button>
-        <button id="save">保存</button>
-        <button id="clear" class="danger">全削除</button>
-      </div>
+          <label>
+            <span>Interval seconds</span>
+            <input id="interval" type="number" value="0.5" min="0.1" step="0.1" />
+          </label>
+        </div>
 
-      <p id="status" class="status">動画を選択してください</p>
-    </section>
+        <div class="studio-actions">
+          <button id="extract" class="primary" type="button">Extract</button>
+          <button id="save" type="button">Save</button>
+          <button id="clear" class="danger" type="button">Clear All</button>
+        </div>
 
-    <section class="card">
-      <h2>プレビュー</h2>
-      <video id="video" controls muted playsinline></video>
-      <canvas id="canvas" style="display:none;"></canvas>
+        <p id="status" class="status">動画を選択してください</p>
+      </article>
 
-      <div id="colors" class="colors"></div>
+      <article class="panel preview-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Preview</h2>
+            <p class="muted">Generated swatches appear below the video.</p>
+          </div>
+        </div>
+
+        <video id="video" controls muted playsinline></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        <div id="colors" class="colors color-timeline"></div>
+      </article>
     </section>
   </main>
 
@@ -78,7 +98,7 @@
       if (!file) return;
 
       video.src = URL.createObjectURL(file);
-      status.textContent = `読み込み完了：${file.name}`;
+      status.textContent = `読み込み完了: ${file.name}`;
       frames = [];
       colors.innerHTML = '';
     });
@@ -132,7 +152,7 @@
 
       frames.forEach((frame, i) => {
         const div = document.createElement('div');
-        div.className = 'color-chip';
+        div.className = 'color-chip timeline-chip';
         div.style.background = frame.color;
         div.title = `${i + 1}: ${frame.color}`;
         div.textContent = i + 1;
@@ -175,7 +195,7 @@
       }
 
       renderColors();
-      status.textContent = `抽出完了：${frames.length} frames`;
+      status.textContent = `抽出完了: ${frames.length} frames`;
     });
 
     saveBtn.addEventListener('click', async () => {
@@ -193,8 +213,8 @@
 
       await saveSequence(sequence);
 
-      status.textContent = `保存しました：${sequence.name}`;
-      alert('保存しました。admin.htmlで選択できます。');
+      status.textContent = `保存しました: ${sequence.name}`;
+      alert('保存しました。Adminで選択できます。');
     });
 
     clearBtn.addEventListener('click', async () => {
