@@ -26,7 +26,7 @@
   </main>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbyvc7zNAQWQXH17Idlc6FtsZDn8rIF6HwQGc7tkshYHiIzznSGcI6-wihAu5Ur51JmnKw/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycby6KJmefD4H6lFrIPUXyuiDNEnsEGXTaK4KJ3hY0tu0HszVVbgzlki8jtxiJI4VW4bJcg/exec";
 
     const status = document.getElementById("status");
     const gallery = document.getElementById("gallery");
@@ -59,12 +59,6 @@
       return n + " B";
     }
 
-    function isApproved(item) {
-      if (item.approved === true) return true;
-      if (String(item.approved).toLowerCase() === "true") return true;
-      return false;
-    }
-
     function createCard(item) {
       const type = String(item.type || "");
       const isPhoto = type === "photo" || String(item.mimeType || "").startsWith("image/");
@@ -75,14 +69,16 @@
 
       const title = escapeHtml(item.fileName || "no-name");
       const studentId = escapeHtml(item.studentId || "");
+      const schoolCode = escapeHtml(item.schoolCode || "");
       const createdAt = escapeHtml(item.createdAt || "");
       const size = formatSize(item.size);
-      const url = item.downloadURL || item.driveUrl || item.driveUrl || "";
+      const url = item.driveUrl || item.downloadURL || "";
+      const previewUrl = item.thumbnailLink || item.thumbnailUrl || url;
 
       let preview = "";
 
-      if (isPhoto && url) {
-        preview = `<img class="gallery-preview" src="${escapeHtml(url)}" alt="${title}" loading="lazy">`;
+      if (isPhoto && previewUrl) {
+        preview = `<img class="gallery-preview" src="${escapeHtml(previewUrl)}" alt="${title}" loading="lazy">`;
       } else if (isVideo) {
         // 動画は一覧で自動読み込みしすぎると重いので、直接video表示しない
         preview = `
@@ -102,7 +98,8 @@
         ${preview}
         <div class="gallery-info">
           <b>${title}</b>
-          <p class="muted">ID：${studentId}</p>
+          <p class="muted">School: ${schoolCode || "-"}</p>
+          <p class="muted">ID: ${studentId}</p>
           <p class="muted">${createdAt}</p>
           <p class="muted">${escapeHtml(item.type || "")} / ${size}</p>
           <div class="gallery-actions">
@@ -126,7 +123,7 @@
           throw new Error(data.message || "読み込み失敗");
         }
 
-        const uploads = (data.uploads || []).filter(isApproved);
+        const uploads = data.uploads || [];
 
         if (!uploads.length) {
           status.textContent = "まだ投稿がありません";

@@ -58,6 +58,7 @@
     const GOOGLE_CLIENT_ID = "819550776861-btle4ghnr6lb560p3oua2akksiuvbm3o.apps.googleusercontent.com";
     const GOOGLE_DRIVE_FOLDER_ID = "1r7rKCri1my5jNO2OMV_4G3B9gos8kSAG";
     const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycby6KJmefD4H6lFrIPUXyuiDNEnsEGXTaK4KJ3hY0tu0HszVVbgzlki8jtxiJI4VW4bJcg/exec";
     const CHUNK_SIZE = 2 * 1024 * 1024;
 
     const firebaseConfig = {
@@ -181,6 +182,27 @@
       const fileName = `${studentId}_${fileNo}.${ext}`;
 
       return { studentId, fileNo, fileName, type };
+    }
+
+    async function saveUploadLogToSpreadsheet(data) {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: JSON.stringify({
+          mode: 'recordUrl',
+          ...data
+        })
+      });
+
+      const result = await res.json();
+
+      if (!result.success) {
+        throw new Error(result.message || 'Spreadsheetログ保存に失敗しました');
+      }
+
+      return result;
     }
 
     function assertDriveSettings() {
@@ -362,7 +384,7 @@
         'https://www.googleapis.com/upload/drive/v3/files',
         '?uploadType=resumable',
         '&supportsAllDrives=true',
-        '&fields=id,name,mimeType,size,webViewLink,webContentLink'
+        '&fields=id,name,mimeType,size,webViewLink,webContentLink,thumbnailLink'
       ].join('');
 
       const res = await fetch(url, {
@@ -476,6 +498,29 @@
 
         if (result.done) {
           const link = result.file.webViewLink || `https://drive.google.com/file/d/${result.file.id}/view`;
+
+          try {
+            await saveUploadLogToSpreadsheet({
+              studentId: fileInfo.studentId,
+              schoolCode: getSchoolFolderName(),
+              fileNo: fileInfo.fileNo,
+              type: fileInfo.type,
+              fileName: fileInfo.fileName,
+              driveFileId: result.file.id,
+              driveFolderId: parentFolderId,
+              rootFolderId: GOOGLE_DRIVE_FOLDER_ID,
+              driveUrl: link,
+              downloadURL: link,
+              thumbnailLink: result.file.thumbnailLink || '',
+              mimeType,
+              size: blob.size,
+              createdAt: new Date().toISOString(),
+              approved: true
+            });
+          } catch (logError) {
+            console.error(logError);
+            uploadStatus.textContent = `Drive保存完了 / ログ保存失敗: ${logError.message}`;
+          }
           uploadStatus.innerHTML =
             `アップロード完了: <a href="${link}" target="_blank" rel="noopener">${fileInfo.fileName}</a>`;
           cameraStatus.textContent = `保存完了: ${fileInfo.fileName}`;
