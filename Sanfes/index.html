@@ -21,11 +21,14 @@
 
   <div id="mainPanel" class="participant-ui hidden">
     <h1>FESTIVAL COLOR</h1>
-    <p class="version-badge">v0.4.0-drive-school-log</p>
+    <p class="version-badge">v0.5.0-gallery-social</p>
     <p id="studentIdText">未ログイン</p>
     <p id="status">受信待機中...</p>
     <p id="colorText">#000000</p>
     <p id="uploadStatus">アップロード待機中</p>
+    <div id="uploadProgress" class="upload-progress hidden" aria-hidden="true">
+      <div id="uploadProgressBar" class="upload-progress-bar"></div>
+    </div>
     <button id="logoutBtn">ログアウト</button>
   </div>
 
@@ -59,7 +62,7 @@
     const GOOGLE_CLIENT_ID = "819550776861-btle4ghnr6lb560p3oua2akksiuvbm3o.apps.googleusercontent.com";
     const GOOGLE_DRIVE_FOLDER_ID = "1r7rKCri1my5jNO2OMV_4G3B9gos8kSAG";
     const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-    const GAS_URL = "https://script.google.com/macros/s/AKfycby6KJmefD4H6lFrIPUXyuiDNEnsEGXTaK4KJ3hY0tu0HszVVbgzlki8jtxiJI4VW4bJcg/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxJuANtJDcTL7gK_srRSsmpFD3ROZSnzAZw4Wk36ZqB-qGW6pO56Qnv0kZgCV61jbYCZw/exec";
     const CHUNK_SIZE = 2 * 1024 * 1024;
 
     const firebaseConfig = {
@@ -89,6 +92,8 @@
     const status = document.getElementById('status');
     const colorText = document.getElementById('colorText');
     const uploadStatus = document.getElementById('uploadStatus');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const uploadProgressBar = document.getElementById('uploadProgressBar');
 
     const openCameraBtn = document.getElementById('openCamera');
     const miniCamera = document.getElementById('miniCamera');
@@ -183,6 +188,24 @@
       const fileName = `${studentId}_${fileNo}.${ext}`;
 
       return { studentId, fileNo, fileName, type };
+    }
+
+    function setUploadProgress(percent, label) {
+      const safePercent = Math.max(0, Math.min(100, Math.round(percent)));
+      uploadProgress.classList.remove('hidden');
+      uploadProgress.setAttribute('aria-hidden', 'false');
+      uploadProgressBar.style.width = `${safePercent}%`;
+
+      if (label) {
+        uploadStatus.textContent = `${label} / ${safePercent}%`;
+        cameraStatus.textContent = `${safePercent}%`;
+      }
+    }
+
+    function resetUploadProgress() {
+      uploadProgress.classList.add('hidden');
+      uploadProgress.setAttribute('aria-hidden', 'true');
+      uploadProgressBar.style.width = '0%';
     }
 
     async function saveUploadLogToSpreadsheet(data) {
@@ -495,8 +518,11 @@
       uploadStatus.textContent = `アップロード準備中: ${fileInfo.fileName}`;
       cameraStatus.textContent = 'Google Driveへ接続中...';
 
+      setUploadProgress(0, `アップロード準備中: ${fileInfo.fileName}`);
       const token = await getGoogleAccessToken();
+      setUploadProgress(1, `保存先確認中: ${fileInfo.fileName}`);
       const parentFolderId = await ensureSchoolDriveFolder(token);
+      setUploadProgress(2, `アップロード開始中: ${fileInfo.fileName}`);
       const uploadUrl = await startDriveResumableSession(blob, fileInfo, mimeType, token, parentFolderId);
       let start = 0;
 
@@ -508,6 +534,7 @@
 
         if (result.done) {
           const link = result.file.webViewLink || `https://drive.google.com/file/d/${result.file.id}/view`;
+          setUploadProgress(100, `アップロード完了: ${fileInfo.fileName}`);
 
           try {
             await saveUploadLogToSpreadsheet({
@@ -542,6 +569,7 @@
         const percent = Math.min(99, Math.round((start / blob.size) * 100));
         uploadStatus.textContent = `アップロード中: ${fileInfo.fileName} / ${percent}%`;
         cameraStatus.textContent = `${percent}%`;
+        setUploadProgress(percent, `アップロード中: ${fileInfo.fileName}`);
       }
 
       throw new Error('アップロード完了レスポンスを取得できませんでした');
@@ -560,8 +588,8 @@
         cameraStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: 'environment' },
-            width: { ideal: 640 },
-            height: { ideal: 360 },
+            width: { ideal: 3840 },
+            height: { ideal: 2160 },
             frameRate: { ideal: 15, max: 24 }
           },
           audio: true
@@ -652,7 +680,7 @@
           cameraStatus.textContent = 'アップロード失敗';
           alert(`アップロード失敗: ${error.message}`);
         }
-      }, 'image/jpeg', 0.86);
+      }, 'image/jpeg', 0.95);
     }
 
     function startRecord() {
@@ -676,7 +704,7 @@
 
       mediaRecorder = new MediaRecorder(cameraStream, {
         mimeType: currentMimeType,
-        videoBitsPerSecond: 900000,
+        videoBitsPerSecond: 650000,
         audioBitsPerSecond: 64000
       });
 

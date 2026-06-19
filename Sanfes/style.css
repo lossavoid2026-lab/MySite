@@ -225,6 +225,25 @@ video {
   margin-top: 14px;
 }
 
+.upload-progress {
+  width: min(320px, 78vw);
+  height: 10px;
+  margin: 2px 0 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.18);
+}
+
+.upload-progress-bar {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #00ffff, #ff00ff);
+  transition: width 0.18s ease;
+}
+
 /* ログイン */
 .login-panel {
   position: fixed;
@@ -379,11 +398,36 @@ video {
 }
 
 .gallery-card {
+  position: relative;
   overflow: hidden;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(0, 255, 255, 0.22);
   box-shadow: 0 0 16px rgba(0, 255, 255, 0.08);
+}
+
+.gallery-toolbar {
+  align-items: center;
+}
+
+.gallery-select {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.38);
+}
+
+.gallery-select input {
+  width: 18px;
+  height: 18px;
+  accent-color: #ff00ff;
 }
 
 .gallery-preview {
@@ -419,6 +463,24 @@ video {
 
 .gallery-actions {
   margin-top: 12px;
+}
+
+.compact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.heart-btn {
+  border-color: #ffd84d;
+  background: rgba(255, 216, 77, 0.12);
+}
+
+.heart-btn.liked {
+  background: rgba(255, 216, 77, 0.32);
+  box-shadow:
+    0 0 12px rgba(255, 216, 77, 0.32),
+    0 0 20px rgba(255, 0, 255, 0.12);
 }
 
 .btn.small {

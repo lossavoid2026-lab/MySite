@@ -6,16 +6,22 @@
   <title>Festival Gallery</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="data:," />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
   <main class="wrap">
     <section class="hero">
       <h1>GALLERY</h1>
-      <p class="muted">投稿された写真・動画一覧</p>
+      <p class="muted">Spreadsheet log viewer</p>
 
-      <div class="grid">
-        <a class="btn" href="index.html">参加者画面</a>
-        <button id="reload">再読み込み</button>
+      <div class="grid gallery-toolbar">
+        <a class="btn" href="index.html">Camera</a>
+        <button id="filterMine" class="primary" type="button">自分</button>
+        <button id="filterSchool" type="button">XX内</button>
+        <button id="filterCampus" type="button">vga全体</button>
+        <button id="reload" type="button">再読み込み</button>
+        <button id="downloadSelected" type="button">選択を一括DL</button>
       </div>
     </section>
 
@@ -26,11 +32,41 @@
   </main>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycby6KJmefD4H6lFrIPUXyuiDNEnsEGXTaK4KJ3hY0tu0HszVVbgzlki8jtxiJI4VW4bJcg/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxJuANtJDcTL7gK_srRSsmpFD3ROZSnzAZw4Wk36ZqB-qGW6pO56Qnv0kZgCV61jbYCZw/exec";
+    const GOOGLE_CLIENT_ID = "819550776861-btle4ghnr6lb560p3oua2akksiuvbm3o.apps.googleusercontent.com";
+    const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly";
 
     const status = document.getElementById("status");
     const gallery = document.getElementById("gallery");
     const reloadBtn = document.getElementById("reload");
+    const downloadSelectedBtn = document.getElementById("downloadSelected");
+    const filterMineBtn = document.getElementById("filterMine");
+    const filterSchoolBtn = document.getElementById("filterSchool");
+    const filterCampusBtn = document.getElementById("filterCampus");
+
+    let uploads = [];
+    let activeFilter = "mine";
+    let selectedIds = new Set();
+    let accessToken = "";
+    let tokenClient = null;
+
+    function getCurrentStudentId() {
+      return localStorage.getItem("festival_student_id") || "";
+    }
+
+    function getSchoolCode(studentId = getCurrentStudentId()) {
+      const match = String(studentId).match(/^[^-]+-([a-zA-Z]+)/);
+      return match ? match[1].toUpperCase() : "UNKNOWN";
+    }
+
+    function getCampusCode(studentId = getCurrentStudentId()) {
+      const match = String(studentId).match(/^([a-zA-Z]+)/);
+      return match ? match[1].toUpperCase() : "VGA";
+    }
+
+    function getItemId(item) {
+      return item.driveFileId || item.fileName || `${item.studentId}_${item.fileNo}`;
+    }
 
     function escapeHtml(text) {
       return String(text ?? "")
@@ -43,106 +79,267 @@
 
     function formatSize(size) {
       const n = Number(size || 0);
-
-      if (n >= 1024 * 1024 * 1024) {
-        return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
-      }
-
-      if (n >= 1024 * 1024) {
-        return (n / 1024 / 1024).toFixed(2) + " MB";
-      }
-
-      if (n >= 1024) {
-        return (n / 1024).toFixed(1) + " KB";
-      }
-
+      if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+      if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + " MB";
+      if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
       return n + " B";
     }
 
+    function isDeleted(item) {
+      return item.deleted === true || String(item.deleted).toLowerCase() === "true";
+    }
+
+    function isLikedByMe(item) {
+      const me = getCurrentStudentId();
+      const likedBy = String(item.likedBy || "");
+      return likedBy.split(",").map(v => v.trim()).includes(me);
+    }
+
+    function filterUploads() {
+      const me = getCurrentStudentId();
+      const mySchool = getSchoolCode(me);
+      const myCampus = getCampusCode(me);
+
+      return uploads.filter(item => {
+        if (isDeleted(item)) return false;
+        const studentId = String(item.studentId || "");
+        const schoolCode = String(item.schoolCode || getSchoolCode(studentId)).toUpperCase();
+        const campusCode = getCampusCode(studentId);
+
+        if (activeFilter === "mine") return studentId === me;
+        if (activeFilter === "school") return schoolCode === mySchool;
+        return campusCode === myCampus;
+      });
+    }
+
+    function setActiveFilter(nextFilter) {
+      activeFilter = nextFilter;
+      [filterMineBtn, filterSchoolBtn, filterCampusBtn].forEach(btn => btn.classList.remove("primary"));
+      if (nextFilter === "mine") filterMineBtn.classList.add("primary");
+      if (nextFilter === "school") filterSchoolBtn.classList.add("primary");
+      if (nextFilter === "campus") filterCampusBtn.classList.add("primary");
+      renderGallery();
+    }
+
     function createCard(item) {
+      const id = getItemId(item);
       const type = String(item.type || "");
       const isPhoto = type === "photo" || String(item.mimeType || "").startsWith("image/");
       const isVideo = type === "video" || String(item.mimeType || "").startsWith("video/");
+      const url = item.driveUrl || item.downloadURL || "";
+      const previewUrl = item.thumbnailLink || item.thumbnailUrl || url;
+      const canDelete = String(item.studentId || "") === getCurrentStudentId();
+      const likes = Number(item.likes || 0);
+      const liked = isLikedByMe(item);
 
       const card = document.createElement("article");
       card.className = "gallery-card";
-
-      const title = escapeHtml(item.fileName || "no-name");
-      const studentId = escapeHtml(item.studentId || "");
-      const schoolCode = escapeHtml(item.schoolCode || "");
-      const createdAt = escapeHtml(item.createdAt || "");
-      const size = formatSize(item.size);
-      const url = item.driveUrl || item.downloadURL || "";
-      const previewUrl = item.thumbnailLink || item.thumbnailUrl || url;
+      card.dataset.id = id;
 
       let preview = "";
-
       if (isPhoto && previewUrl) {
-        preview = `<img class="gallery-preview" src="${escapeHtml(previewUrl)}" alt="${title}" loading="lazy">`;
+        preview = `<img class="gallery-preview" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(item.fileName || "photo")}" loading="lazy">`;
       } else if (isVideo) {
-        // 動画は一覧で自動読み込みしすぎると重いので、直接video表示しない
-        preview = `
-          <div class="gallery-video-placeholder">
-            ▶ VIDEO
-          </div>
-        `;
+        preview = `<div class="gallery-video-placeholder">VIDEO</div>`;
       } else {
-        preview = `
-          <div class="gallery-video-placeholder">
-            FILE
-          </div>
-        `;
+        preview = `<div class="gallery-video-placeholder">FILE</div>`;
       }
 
       card.innerHTML = `
+        <label class="gallery-select">
+          <input type="checkbox" ${selectedIds.has(id) ? "checked" : ""} data-action="select">
+        </label>
         ${preview}
         <div class="gallery-info">
-          <b>${title}</b>
-          <p class="muted">School: ${schoolCode || "-"}</p>
-          <p class="muted">ID: ${studentId}</p>
-          <p class="muted">${createdAt}</p>
-          <p class="muted">${escapeHtml(item.type || "")} / ${size}</p>
-          <div class="gallery-actions">
+          <b>${escapeHtml(item.fileName || "no-name")}</b>
+          <p class="muted">School: ${escapeHtml(item.schoolCode || getSchoolCode(item.studentId))}</p>
+          <p class="muted">ID: ${escapeHtml(item.studentId || "")}</p>
+          <p class="muted">${escapeHtml(item.createdAt || "")}</p>
+          <p class="muted">${escapeHtml(type)} / ${formatSize(item.size)}</p>
+          <div class="gallery-actions compact-actions">
+            <button class="btn small heart-btn ${liked ? "liked" : ""}" type="button" data-action="like">💛 ${likes}</button>
             <a class="btn small" href="${escapeHtml(url)}" target="_blank" rel="noopener">開く</a>
+            ${canDelete ? '<button class="btn small danger" type="button" data-action="delete">削除</button>' : ""}
           </div>
         </div>
       `;
 
+      card.addEventListener("change", event => {
+        if (event.target.dataset.action !== "select") return;
+        if (event.target.checked) selectedIds.add(id);
+        else selectedIds.delete(id);
+        updateDownloadButton();
+      });
+
+      card.addEventListener("click", event => {
+        const action = event.target.dataset.action;
+        if (action === "like") toggleLike(item);
+        if (action === "delete") deleteOwnItem(item);
+      });
+
       return card;
+    }
+
+    function renderGallery() {
+      const items = filterUploads();
+      gallery.innerHTML = "";
+
+      if (!items.length) {
+        status.textContent = "表示できる投稿がありません";
+        updateDownloadButton();
+        return;
+      }
+
+      items.forEach(item => gallery.appendChild(createCard(item)));
+      status.textContent = `${items.length}件表示中 / ${activeFilter}`;
+      updateDownloadButton();
+    }
+
+    function updateDownloadButton() {
+      downloadSelectedBtn.textContent = `選択を一括DL (${selectedIds.size})`;
+      downloadSelectedBtn.disabled = selectedIds.size === 0;
+    }
+
+    async function postGas(payload) {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.message || "GAS request failed");
+      return result;
+    }
+
+    async function waitForGoogleIdentity() {
+      const startedAt = Date.now();
+      while (!window.google?.accounts?.oauth2) {
+        if (Date.now() - startedAt > 10000) throw new Error("Google認証ライブラリを読み込めません");
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    async function getDriveAccessToken() {
+      await waitForGoogleIdentity();
+      if (accessToken) return accessToken;
+
+      return new Promise((resolve, reject) => {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: DRIVE_SCOPE,
+          hint: getCurrentStudentId() ? `${getCurrentStudentId()}@sankogakuen.jp` : undefined,
+          callback: response => {
+            if (response.error) {
+              reject(new Error(response.error));
+              return;
+            }
+            accessToken = response.access_token;
+            resolve(accessToken);
+          }
+        });
+        tokenClient.requestAccessToken({ prompt: "" });
+      });
+    }
+
+    async function toggleLike(item) {
+      const studentId = getCurrentStudentId();
+      if (!studentId) {
+        alert("先にindex.htmlでログインしてください");
+        return;
+      }
+
+      await postGas({
+        mode: "toggleLike",
+        driveFileId: item.driveFileId,
+        fileName: item.fileName,
+        studentId
+      });
+
+      await loadGallery();
+    }
+
+    async function deleteOwnItem(item) {
+      if (String(item.studentId || "") !== getCurrentStudentId()) return;
+      if (!confirm(`${item.fileName} を削除しますか？`)) return;
+
+      const token = await getDriveAccessToken();
+
+      if (item.driveFileId) {
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.driveFileId)}?supportsAllDrives=true`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (!res.ok && res.status !== 404) throw new Error(await res.text());
+      }
+
+      await postGas({
+        mode: "deleteUpload",
+        driveFileId: item.driveFileId,
+        fileName: item.fileName,
+        studentId: getCurrentStudentId()
+      });
+
+      selectedIds.delete(getItemId(item));
+      await loadGallery();
+    }
+
+    async function downloadSelected() {
+      const items = filterUploads().filter(item => selectedIds.has(getItemId(item)));
+      if (!items.length) return;
+
+      const token = await getDriveAccessToken();
+      const zip = new JSZip();
+      status.textContent = `一括ダウンロード準備中... 0/${items.length}`;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (!item.driveFileId) continue;
+
+        status.textContent = `一括ダウンロード準備中... ${i + 1}/${items.length}`;
+        const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(item.driveFileId)}?alt=media&supportsAllDrives=true`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          console.warn("download failed", item.fileName, await res.text());
+          continue;
+        }
+
+        zip.file(item.fileName || `${item.driveFileId}.bin`, await res.blob());
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `festival-gallery-${activeFilter}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      status.textContent = `${items.length}件の一括ダウンロードを開始しました`;
     }
 
     async function loadGallery() {
       status.textContent = "読み込み中...";
-      gallery.innerHTML = "";
-
       try {
         const res = await fetch(GAS_URL);
         const data = await res.json();
-
-        if (!data.success) {
-          throw new Error(data.message || "読み込み失敗");
-        }
-
-        const uploads = data.uploads || [];
-
-        if (!uploads.length) {
-          status.textContent = "まだ投稿がありません";
-          return;
-        }
-
-        uploads.forEach(item => {
-          gallery.appendChild(createCard(item));
-        });
-
-        status.textContent = `${uploads.length}件表示中`;
-
+        if (!data.success) throw new Error(data.message || "読み込み失敗");
+        uploads = data.uploads || [];
+        renderGallery();
       } catch (error) {
         console.error(error);
-        status.textContent = `読み込み失敗：${error.message}`;
+        status.textContent = `読み込み失敗: ${error.message}`;
       }
     }
 
+    filterMineBtn.addEventListener("click", () => setActiveFilter("mine"));
+    filterSchoolBtn.addEventListener("click", () => setActiveFilter("school"));
+    filterCampusBtn.addEventListener("click", () => setActiveFilter("campus"));
     reloadBtn.addEventListener("click", loadGallery);
+    downloadSelectedBtn.addEventListener("click", downloadSelected);
+
     loadGallery();
   </script>
 </body>
